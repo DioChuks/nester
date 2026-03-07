@@ -8,7 +8,7 @@ import Image from "next/image"
 
 export function Hero() {
     return (
-        <section className="relative pt-20 pb-10 md:pt-28 md:pb-14 lg:pt-32 lg:pb-20 flex flex-col items-center justify-center overflow-hidden bg-background text-center">
+        <section className="relative py-4 md:py-8 flex flex-col items-center justify-center overflow-hidden bg-background text-center w-full">
             <Container className="flex flex-col items-center justify-center gap-6 md:gap-8 z-20">
                 <motion.h1
                     initial={{ opacity: 0, y: 20 }}
