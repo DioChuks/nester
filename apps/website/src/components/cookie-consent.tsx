@@ -35,7 +35,7 @@ export function CookieConsent() {
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 20, scale: 0.95 }}
                     transition={{ duration: 0.3 }}
-                    className="fixed bottom-6 right-6 z-[100] w-full max-w-[420px] p-6 bg-white rounded-[24px] shadow-2xl border border-border/10"
+                    className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:bottom-6 z-[100] w-auto sm:w-full sm:max-w-[420px] p-5 sm:p-6 bg-white rounded-[20px] sm:rounded-[24px] shadow-2xl border border-border/10"
                 >
                     <div className="flex flex-col gap-6">
                         <p className="text-[15px] text-[#111827] leading-relaxed font-sans">
