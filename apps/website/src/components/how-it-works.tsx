@@ -761,7 +761,7 @@ export function HowItWorks() {
           initial={{ opacity: 0, y: 32 }}
           animate={isInView ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.75, delay: 0.15, ease: [0.23, 1, 0.32, 1] }}
-          className="rounded-3xl overflow-hidden"
+          className="rounded-t-3xl overflow-hidden"
           style={{
             background: "hsl(0,0%,91%)",
             boxShadow: "0 1px 2px rgba(0,0,0,0.05), 0 8px 40px rgba(0,0,0,0.06)",
@@ -769,10 +769,10 @@ export function HowItWorks() {
         >
           {/* Browser chrome bar */}
           <div className="flex items-center gap-3 px-6 py-4 border-b border-black/[0.06]">
-            <div className="flex gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-full bg-black/10" />
-              <div className="w-2.5 h-2.5 rounded-full bg-black/10" />
-              <div className="w-2.5 h-2.5 rounded-full bg-black/10" />
+            <div className="flex gap-2">
+              <div className="w-3 h-3 rounded-full bg-[#ff5f57]" />
+              <div className="w-3 h-3 rounded-full bg-[#febc2e]" />
+              <div className="w-3 h-3 rounded-full bg-[#28c840]" />
             </div>
             <div className="flex-1 flex items-center justify-center">
               <div className="flex items-center gap-1.5 bg-black/[0.05] border border-black/[0.07] rounded-lg px-4 py-1.5">
@@ -886,7 +886,7 @@ export function HowItWorks() {
           initial={{ opacity: 0, y: 14 }}
           animate={isInView ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.55, delay: 0.3 }}
-          className="grid grid-cols-2 lg:grid-cols-4 border border-t-0 border-black/[0.08] rounded-b-3xl overflow-hidden"
+          className="grid grid-cols-2 lg:grid-cols-4 border border-t-0 border-black/[0.08] overflow-hidden"
           style={{ background: "hsl(0,0%,88%)" }}
         >
           {STEPS.map((s, i) => {

@@ -154,12 +154,9 @@ function FaqItem({
   onToggle: () => void;
 }) {
   const [phase, setPhase] = useState<"closed" | "redacted" | "dissolving" | "revealed">("closed");
-  const contentRef = useRef<HTMLDivElement>(null);
-  const [contentHeight, setContentHeight] = useState(0);
 
   useEffect(() => {
     if (isOpen) {
-      // Transition through phases: redacted -> dissolving -> revealed
       setPhase("redacted");
       const t1 = setTimeout(() => setPhase("dissolving"), 600);
       const t2 = setTimeout(() => setPhase("revealed"), 1800);
@@ -171,12 +168,6 @@ function FaqItem({
       setPhase("closed");
     }
   }, [isOpen]);
-
-  useEffect(() => {
-    if (contentRef.current) {
-      setContentHeight(contentRef.current.scrollHeight);
-    }
-  }, [isOpen, phase]); // Re-measure when stamp appears/disappears
 
   return (
     <motion.div
@@ -243,7 +234,7 @@ function FaqItem({
           transition={{ duration: 0.5, ease: [0.23, 1, 0.32, 1] }}
           className="overflow-hidden"
         >
-          <div ref={contentRef} className="px-6 md:px-8 pb-6 md:pb-8">
+          <div className="px-6 md:px-8 pb-6 md:pb-8">
             <div className="ml-0 md:ml-[calc(2.5rem+1rem)] border-t border-black/[0.06] pt-5">
               {/* Stamp — slams in when dissolving starts */}
               {(phase === "dissolving" || phase === "revealed") && (
@@ -312,7 +303,7 @@ export function Faq() {
     <section
       ref={sectionRef}
       className="w-full py-24 md:py-36 overflow-hidden px-6 md:px-12"
-      style={{ background: "hsl(0,0%,85%)" }}
+      style={{ background: "#f5f5f0" }}
     >
       <div className="max-w-4xl mx-auto w-full">
         {/* Header */}

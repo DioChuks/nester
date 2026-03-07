@@ -5,6 +5,7 @@ import { Ecosystem } from "@/components/ecosystem";
 import { AiLayer } from "@/components/ai-layer";
 import { HowItWorks } from "@/components/how-it-works";
 import { Faq } from "@/components/faq";
+import { Footer } from "@/components/footer";
 // import { FeaturesFloat } from "@/components/features-float";
 // import { Architecture } from "@/components/architecture";
 
@@ -24,6 +25,7 @@ export default function Home() {
       <AiLayer />
       <HowItWorks />
       <Faq />
+      <Footer />
       {/* <Architecture /> */}
       {/* <FeaturesFloat /> */}
     </main>
