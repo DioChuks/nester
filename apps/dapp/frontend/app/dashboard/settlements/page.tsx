@@ -1,16 +1,24 @@
 "use client";
 
+import Image from "next/image";
 import { useWallet } from "@/components/wallet-provider";
 import { Navbar } from "@/components/navbar";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { cn } from "@/lib/utils";
 import {
     ChevronDown,
     ArrowDownUp,
     ShieldCheck,
     Clock,
     Info,
+    Zap,
+    Tag,
+    Building2,
+    Loader2,
+    CheckCircle2,
+    ArrowRight,
 } from "lucide-react";
 
 const BANKS = [
@@ -25,16 +33,87 @@ const BANKS = [
 ];
 
 const SEND_ASSETS = [
-    { symbol: "USDC", name: "USD Coin", icon: "💲" },
-    { symbol: "USDT", name: "Tether", icon: "💵" },
-    { symbol: "XLM", name: "Stellar Lumens", icon: "✦" },
+    { symbol: "USDC", name: "USD Coin", image: "/usdc.png" },
+    { symbol: "USDT", name: "Tether", image: "/usdc.png" },
+    { symbol: "XLM", name: "Stellar Lumens", image: "/logo.png" },
 ];
 
 const RECEIVE_CURRENCIES = [
-    { symbol: "NGN", name: "Nigerian Naira", icon: "🇳🇬", rate: 1512.45 },
-    { symbol: "GHS", name: "Ghanaian Cedi", icon: "🇬🇭", rate: 15.80 },
-    { symbol: "KES", name: "Kenyan Shilling", icon: "🇰🇪", rate: 129.50 },
+    { symbol: "NGN", name: "Nigerian Naira", image: "/naira.webp", rate: 1512.45 },
+    { symbol: "GHS", name: "Ghanaian Cedi", image: "/naira.webp", rate: 15.80 },
+    { symbol: "KES", name: "Kenyan Shilling", image: "/naira.webp", rate: 129.50 },
 ];
+
+/* ── Simulated LP Nodes ── */
+
+interface LPNode {
+    id: string;
+    name: string;
+    bank: string;
+    baseRateOffset: number;
+    fee: number;
+    avgSettleTime: number;
+    reliability: number;
+}
+
+const LP_NODES: LPNode[] = [
+    { id: "n1", name: "LiquidityPrime", bank: "kuda", baseRateOffset: 2.15, fee: 0.4, avgSettleTime: 8, reliability: 99.2 },
+    { id: "n2", name: "FastSettle NG", bank: "zenith", baseRateOffset: 0.80, fee: 0.5, avgSettleTime: 12, reliability: 97.8 },
+    { id: "n3", name: "NairaNode", bank: "gtbank", baseRateOffset: 1.45, fee: 0.45, avgSettleTime: 15, reliability: 98.5 },
+    { id: "n4", name: "CedarPay", bank: "access", baseRateOffset: -0.30, fee: 0.35, avgSettleTime: 20, reliability: 96.1 },
+    { id: "n5", name: "StellarBridge", bank: "moniepoint", baseRateOffset: 1.90, fee: 0.5, avgSettleTime: 5, reliability: 99.5 },
+    { id: "n6", name: "KudaConnect", bank: "kuda", baseRateOffset: 0.55, fee: 0.3, avgSettleTime: 3, reliability: 98.9 },
+    { id: "n7", name: "PayRoute", bank: "firstbank", baseRateOffset: -0.90, fee: 0.6, avgSettleTime: 25, reliability: 94.2 },
+    { id: "n8", name: "SwiftNode", bank: "opay", baseRateOffset: 1.10, fee: 0.45, avgSettleTime: 10, reliability: 97.0 },
+];
+
+interface QuoteResult {
+    node: LPNode;
+    effectiveRate: number;
+    receiveAmount: number;
+    fee: number;
+    isSameBank: boolean;
+    estimatedTime: string;
+    isBest: boolean;
+    rateOffset: number;
+}
+
+type QuotePhase = "idle" | "scanning" | "comparing" | "ranking" | "done";
+
+function jitterOffset(base: number): number {
+    return base + (Math.random() - 0.5) * 3;
+}
+
+function buildQuotes(
+    amount: number,
+    bank: typeof BANKS[0],
+    currency: typeof RECEIVE_CURRENCIES[0],
+): QuoteResult[] {
+    const results: QuoteResult[] = LP_NODES.map((node) => {
+        const rateOffset = jitterOffset(node.baseRateOffset);
+        const effectiveRate = currency.rate + rateOffset;
+        const nodeFee = amount * (node.fee / 100);
+        const netAmount = amount - nodeFee;
+        const receiveAmount = netAmount * effectiveRate;
+        const isSameBank = node.bank === bank.code;
+        const estimatedTime = isSameBank
+            ? `~${Math.max(3, node.avgSettleTime - 8)}s`
+            : `${Math.ceil(node.avgSettleTime / 60) || 1}-${Math.ceil(node.avgSettleTime / 60) + 4} min`;
+
+        return { node, effectiveRate, receiveAmount, fee: nodeFee, isSameBank, estimatedTime, isBest: false, rateOffset };
+    });
+
+    results.sort((a, b) => {
+        const diff = Math.abs(a.receiveAmount - b.receiveAmount) / Math.max(a.receiveAmount, b.receiveAmount);
+        if (diff < 0.005 && a.isSameBank !== b.isSameBank) {
+            return a.isSameBank ? -1 : 1;
+        }
+        return b.receiveAmount - a.receiveAmount;
+    });
+
+    results[0].isBest = true;
+    return results;
+}
 
 export default function SettlementsPage() {
     const { isConnected } = useWallet();
@@ -49,19 +128,97 @@ export default function SettlementsPage() {
     const [showSendDropdown, setShowSendDropdown] = useState(false);
     const [showReceiveDropdown, setShowReceiveDropdown] = useState(false);
 
+    // Quote state
+    const [quotePhase, setQuotePhase] = useState<QuotePhase>("idle");
+    const [scannedCount, setScannedCount] = useState(0);
+    const [quotes, setQuotes] = useState<QuoteResult[]>([]);
+    const [selectedQuote, setSelectedQuote] = useState<QuoteResult | null>(null);
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const refreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
     useEffect(() => {
         if (!isConnected) {
             router.push("/");
         }
     }, [isConnected, router]);
 
+    const numericAmount = parseFloat(sendAmount) || 0;
+    const allFieldsFilled = numericAmount > 0 && selectedBank !== null && accountNumber.length === 10;
+
+    // Full animated scan (first time or on field change)
+    const runQuoteScan = useCallback((amount: number, bank: typeof BANKS[0], currency: typeof RECEIVE_CURRENCIES[0]) => {
+        setQuotePhase("scanning");
+        setScannedCount(0);
+        setQuotes([]);
+        setSelectedQuote(null);
+
+        let count = 0;
+        const scanInterval = setInterval(() => {
+            count++;
+            setScannedCount(count);
+            if (count >= LP_NODES.length) {
+                clearInterval(scanInterval);
+                setQuotePhase("comparing");
+                setTimeout(() => {
+                    setQuotePhase("ranking");
+                    setTimeout(() => {
+                        const results = buildQuotes(amount, bank, currency);
+                        setQuotes(results);
+                        setSelectedQuote(results[0]);
+                        setQuotePhase("done");
+                    }, 400);
+                }, 600);
+            }
+        }, 120);
+    }, []);
+
+    // Silent refresh — no loading animation, just update prices in place
+    const silentRefresh = useCallback((amount: number, bank: typeof BANKS[0], currency: typeof RECEIVE_CURRENCIES[0]) => {
+        const results = buildQuotes(amount, bank, currency);
+        setQuotes(results);
+        setSelectedQuote((prev) => {
+            if (!prev) return results[0];
+            const same = results.find((q) => q.node.id === prev.node.id);
+            return same || results[0];
+        });
+    }, []);
+
+    // Trigger scan when all fields are filled; clear when not
+    useEffect(() => {
+        // Clear any existing refresh interval
+        if (refreshRef.current) { clearInterval(refreshRef.current); refreshRef.current = null; }
+
+        if (!allFieldsFilled) {
+            setQuotePhase("idle");
+            setQuotes([]);
+            setSelectedQuote(null);
+            return;
+        }
+
+        // Debounce the initial scan
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => {
+            runQuoteScan(numericAmount, selectedBank!, receiveCurrency);
+
+            // Start periodic silent refresh every 8 seconds
+            refreshRef.current = setInterval(() => {
+                silentRefresh(numericAmount, selectedBank!, receiveCurrency);
+            }, 8000);
+        }, 500);
+
+        return () => {
+            if (debounceRef.current) clearTimeout(debounceRef.current);
+            if (refreshRef.current) clearInterval(refreshRef.current);
+        };
+    }, [allFieldsFilled, numericAmount, selectedBank, receiveCurrency, runQuoteScan, silentRefresh]);
+
     if (!isConnected) return null;
 
-    const numericAmount = parseFloat(sendAmount) || 0;
-    const receiveAmount = numericAmount * receiveCurrency.rate;
-    const fee = numericAmount * 0.005;
-    const netAmount = numericAmount - fee;
-    const netReceive = netAmount * receiveCurrency.rate;
+    const displayReceive = selectedQuote
+        ? selectedQuote.receiveAmount
+        : numericAmount > 0
+            ? numericAmount * receiveCurrency.rate * 0.995
+            : 0;
 
     return (
         <div className="min-h-screen bg-background">
@@ -110,19 +267,19 @@ export default function SettlementsPage() {
                                     onClick={() => setShowSendDropdown(!showSendDropdown)}
                                     className="flex items-center gap-2 px-3 py-2 rounded-full bg-secondary hover:bg-secondary/80 transition-colors"
                                 >
-                                    <span className="text-base">{sendAsset.icon}</span>
+                                    <Image src={sendAsset.image} alt={sendAsset.symbol} width={20} height={20} className="rounded-full" />
                                     <span className="text-sm font-medium text-foreground">{sendAsset.symbol}</span>
                                     <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
                                 </button>
                                 {showSendDropdown && (
-                                    <div className="absolute right-0 top-full mt-1 w-44 rounded-xl border border-border bg-white shadow-lg py-1 z-10">
+                                    <div className="absolute right-0 top-full mt-1 w-48 rounded-xl border border-border bg-white shadow-lg py-1 z-10">
                                         {SEND_ASSETS.map((asset) => (
                                             <button
                                                 key={asset.symbol}
                                                 onClick={() => { setSendAsset(asset); setShowSendDropdown(false); }}
                                                 className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm hover:bg-secondary/50 transition-colors"
                                             >
-                                                <span>{asset.icon}</span>
+                                                <Image src={asset.image} alt={asset.symbol} width={18} height={18} className="rounded-full" />
                                                 <span className="font-medium">{asset.symbol}</span>
                                                 <span className="text-muted-foreground text-xs ml-auto">{asset.name}</span>
                                             </button>
@@ -151,9 +308,11 @@ export default function SettlementsPage() {
                         <label className="text-xs text-muted-foreground font-medium mb-2 block">You&apos;ll receive</label>
                         <div className="flex items-center gap-3">
                             <div className="flex-1 text-3xl font-heading font-light text-foreground min-w-0 truncate">
-                                {numericAmount > 0
-                                    ? netReceive.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                                    : <span className="text-muted-foreground/40">0.00</span>
+                                {allFieldsFilled && selectedQuote
+                                    ? displayReceive.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                                    : numericAmount > 0
+                                        ? <span className="text-muted-foreground/60">≈ {(numericAmount * receiveCurrency.rate * 0.995).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                        : <span className="text-muted-foreground/40">0.00</span>
                                 }
                             </div>
                             <div className="relative">
@@ -161,7 +320,7 @@ export default function SettlementsPage() {
                                     onClick={() => setShowReceiveDropdown(!showReceiveDropdown)}
                                     className="flex items-center gap-2 px-3 py-2 rounded-full bg-secondary hover:bg-secondary/80 transition-colors"
                                 >
-                                    <span className="text-base">{receiveCurrency.icon}</span>
+                                    <Image src={receiveCurrency.image} alt={receiveCurrency.symbol} width={20} height={20} className="rounded-full" />
                                     <span className="text-sm font-medium text-foreground">{receiveCurrency.symbol}</span>
                                     <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
                                 </button>
@@ -173,7 +332,7 @@ export default function SettlementsPage() {
                                                 onClick={() => { setReceiveCurrency(currency); setShowReceiveDropdown(false); }}
                                                 className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm hover:bg-secondary/50 transition-colors"
                                             >
-                                                <span>{currency.icon}</span>
+                                                <Image src={currency.image} alt={currency.symbol} width={18} height={18} className="rounded-full" />
                                                 <span className="font-medium">{currency.symbol}</span>
                                                 <span className="text-muted-foreground text-xs ml-auto">{currency.name}</span>
                                             </button>
@@ -186,7 +345,6 @@ export default function SettlementsPage() {
 
                     {/* Bank Details Section */}
                     <div className="border-t border-border p-5 space-y-4">
-                        {/* Bank Selector */}
                         <div className="relative">
                             <label className="text-xs text-muted-foreground font-medium mb-2 block">Select bank</label>
                             <button
@@ -213,7 +371,6 @@ export default function SettlementsPage() {
                             )}
                         </div>
 
-                        {/* Account Number */}
                         <div>
                             <label className="text-xs text-muted-foreground font-medium mb-2 block">Account number</label>
                             <input
@@ -231,29 +388,32 @@ export default function SettlementsPage() {
                         </div>
                     </div>
 
-                    {/* Rate & Fees */}
-                    {numericAmount > 0 && (
+                    {/* Rate info from selected quote */}
+                    {selectedQuote && allFieldsFilled && (
                         <div className="border-t border-border px-5 py-4 space-y-2">
                             <div className="flex items-center justify-between text-xs">
                                 <span className="text-muted-foreground flex items-center gap-1">
-                                    Exchange rate
+                                    Rate via {selectedQuote.node.name}
                                     <Info className="h-3 w-3" />
                                 </span>
                                 <span className="text-foreground font-medium">
-                                    1 {sendAsset.symbol} ≈ {receiveCurrency.rate.toLocaleString()} {receiveCurrency.symbol}
+                                    1 {sendAsset.symbol} ≈ {selectedQuote.effectiveRate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {receiveCurrency.symbol}
                                 </span>
                             </div>
                             <div className="flex items-center justify-between text-xs">
-                                <span className="text-muted-foreground">Network fee (0.5%)</span>
+                                <span className="text-muted-foreground">Node fee ({selectedQuote.node.fee}%)</span>
                                 <span className="text-foreground font-medium">
-                                    {fee.toFixed(4)} {sendAsset.symbol}
+                                    {selectedQuote.fee.toFixed(4)} {sendAsset.symbol}
                                 </span>
                             </div>
                             <div className="flex items-center justify-between text-xs">
                                 <span className="text-muted-foreground">Estimated time</span>
                                 <span className="text-foreground font-medium flex items-center gap-1">
                                     <Clock className="h-3 w-3" />
-                                    1–5 minutes
+                                    {selectedQuote.estimatedTime}
+                                    {selectedQuote.isSameBank && (
+                                        <span className="text-emerald-600 font-medium ml-1">Same bank</span>
+                                    )}
                                 </span>
                             </div>
                         </div>
@@ -262,16 +422,179 @@ export default function SettlementsPage() {
                     {/* CTA Button */}
                     <div className="p-5 pt-0">
                         <button
-                            disabled={!numericAmount || !selectedBank || accountNumber.length !== 10}
+                            disabled={!allFieldsFilled || quotePhase !== "done"}
                             className="w-full rounded-xl bg-foreground text-background py-4 text-sm font-medium transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                             {!numericAmount ? "Enter an amount" :
                                 !selectedBank ? "Select a bank" :
                                     accountNumber.length !== 10 ? "Enter account number" :
-                                        `Withdraw ${netReceive.toLocaleString("en-US", { minimumFractionDigits: 2 })} ${receiveCurrency.symbol}`}
+                                        quotePhase !== "done" ? "Finding best rate..." :
+                                            `Withdraw ${displayReceive.toLocaleString("en-US", { minimumFractionDigits: 2 })} ${receiveCurrency.symbol}`}
                         </button>
                     </div>
                 </motion.div>
+
+                {/* ── LP Node Quotes ── */}
+                <AnimatePresence>
+                    {allFieldsFilled && quotePhase !== "idle" && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 16 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 8 }}
+                            transition={{ duration: 0.35, delay: 0.05 }}
+                            className="mt-4 rounded-2xl border border-border bg-white shadow-sm overflow-hidden"
+                        >
+                            {/* Quotes Header */}
+                            <div className="px-5 py-3.5 flex items-center justify-between border-b border-border">
+                                <div className="flex items-center gap-2">
+                                    <Tag className="h-3.5 w-3.5 text-muted-foreground" />
+                                    <span className="text-sm font-medium text-foreground">Quotes</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                    {quotePhase === "done" ? (
+                                        <>
+                                            <span className="flex items-center gap-1">
+                                                <span className="relative flex h-1.5 w-1.5">
+                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                                                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+                                                </span>
+                                                Live
+                                            </span>
+                                            <span className="text-muted-foreground/40">·</span>
+                                            <span>{quotes.length} nodes</span>
+                                            <span className="text-muted-foreground/40">·</span>
+                                            <span>Nester LP Network</span>
+                                        </>
+                                    ) : (
+                                        <span className="flex items-center gap-1.5">
+                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                            {quotePhase === "scanning" && `Scanning nodes (${scannedCount}/${LP_NODES.length})`}
+                                            {quotePhase === "comparing" && "Comparing rates..."}
+                                            {quotePhase === "ranking" && "Ranking by price & speed..."}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Scanning progress bar */}
+                            {quotePhase !== "done" && (
+                                <div className="h-0.5 bg-secondary overflow-hidden">
+                                    <motion.div
+                                        className="h-full bg-foreground/70"
+                                        initial={{ width: "0%" }}
+                                        animate={{
+                                            width: quotePhase === "scanning"
+                                                ? `${(scannedCount / LP_NODES.length) * 60}%`
+                                                : quotePhase === "comparing" ? "80%" : "95%"
+                                        }}
+                                        transition={{ duration: 0.2, ease: "easeOut" }}
+                                    />
+                                </div>
+                            )}
+
+                            {/* Quote Results */}
+                            {quotePhase === "done" && quotes.length > 0 && (
+                                <div className="divide-y divide-border">
+                                    {quotes.slice(0, 5).map((quote, i) => (
+                                        <motion.button
+                                            key={quote.node.id}
+                                            initial={{ opacity: 0, x: -8 }}
+                                            animate={{ opacity: 1, x: 0 }}
+                                            transition={{ duration: 0.25, delay: i * 0.06 }}
+                                            onClick={() => setSelectedQuote(quote)}
+                                            className={cn(
+                                                "w-full flex items-center gap-3 px-5 py-3 text-left transition-colors",
+                                                selectedQuote?.node.id === quote.node.id
+                                                    ? "bg-secondary/60"
+                                                    : "hover:bg-secondary/30"
+                                            )}
+                                        >
+                                            {/* Node icon */}
+                                            <div className={cn(
+                                                "h-7 w-7 rounded-full flex items-center justify-center shrink-0",
+                                                quote.isBest
+                                                    ? "bg-emerald-100 text-emerald-700"
+                                                    : "bg-secondary text-muted-foreground"
+                                            )}>
+                                                {quote.isBest
+                                                    ? <Zap className="h-3.5 w-3.5" />
+                                                    : <Building2 className="h-3.5 w-3.5" />
+                                                }
+                                            </div>
+
+                                            {/* Node name + tags */}
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-sm font-medium text-foreground truncate">
+                                                        {quote.node.name}
+                                                    </span>
+                                                    {quote.isBest && (
+                                                        <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-700">
+                                                            Best Price
+                                                        </span>
+                                                    )}
+                                                    {quote.isSameBank && (
+                                                        <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-600">
+                                                            Same Bank
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground">
+                                                    <span>{quote.node.fee}% fee</span>
+                                                    <span className="text-muted-foreground/30">·</span>
+                                                    <span>{quote.estimatedTime}</span>
+                                                    <span className="text-muted-foreground/30">·</span>
+                                                    <span>{quote.node.reliability}% reliable</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Price */}
+                                            <div className="text-right shrink-0">
+                                                {quote.isBest && quotes.length > 1 && (
+                                                    <div className="text-[10px] font-medium text-emerald-600 mb-0.5">
+                                                        +{(quote.receiveAmount - quotes[quotes.length - 1].receiveAmount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                    </div>
+                                                )}
+                                                <div className="text-sm font-medium text-foreground tabular-nums">
+                                                    {quote.receiveAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </div>
+                                                <div className="text-[10px] text-muted-foreground">
+                                                    {receiveCurrency.symbol}
+                                                </div>
+                                            </div>
+
+                                            {/* Selection indicator */}
+                                            {selectedQuote?.node.id === quote.node.id && (
+                                                <CheckCircle2 className="h-4 w-4 text-foreground shrink-0" />
+                                            )}
+                                        </motion.button>
+                                    ))}
+
+                                    {quotes.length > 5 && (
+                                        <div className="px-5 py-2.5 text-center">
+                                            <span className="text-xs text-muted-foreground">
+                                                +{quotes.length - 5} more nodes available
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Bottom routing note */}
+                            {quotePhase === "done" && selectedQuote && (
+                                <div className="px-5 py-3 bg-secondary/30 flex items-center gap-2 text-[11px] text-muted-foreground">
+                                    <ArrowRight className="h-3 w-3 shrink-0" />
+                                    <span>
+                                        Routing through <strong className="text-foreground font-medium">{selectedQuote.node.name}</strong>
+                                        {selectedQuote.isSameBank && (
+                                            <> — same-bank transfer for instant settlement</>
+                                        )}
+                                    </span>
+                                </div>
+                            )}
+                        </motion.div>
+                    )}
+                </AnimatePresence>
 
                 {/* Security Note */}
                 <motion.div
