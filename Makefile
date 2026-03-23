@@ -20,7 +20,7 @@ test:
 	cd $(CONTRACTS_DIR) && $(CARGO) test --all
 
 integration-test:
-	cd $(CONTRACTS_DIR) && $(CARGO) test --test '*'
+	cd $(CONTRACTS_DIR) && $(CARGO) test --all --lib
 
 clean:
 	cd $(CONTRACTS_DIR) && $(CARGO) clean
