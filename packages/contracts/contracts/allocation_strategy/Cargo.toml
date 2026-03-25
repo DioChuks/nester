@@ -5,7 +5,7 @@ edition = "2021"
 publish = false
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 doctest = false
 
 [dependencies]
@@ -18,3 +18,4 @@ yield-registry-contract = { path = "../yield_registry" }
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 nester-test-utils = { path = "../../libs/test_utils" }
+yield-registry-contract = { path = "../yield_registry" }
