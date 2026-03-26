@@ -15,9 +15,9 @@ import (
 // ---------------------------------------------------------------------------
 
 type envelope struct {
-	Success bool             `json:"success"`
-	Data    json.RawMessage  `json:"data"`
-	Error   *envelopeError   `json:"error"`
+	Success bool            `json:"success"`
+	Data    json.RawMessage `json:"data"`
+	Error   *envelopeError  `json:"error"`
 }
 
 type envelopeError struct {
@@ -257,5 +257,144 @@ func TestError_ErrorEnvelopeHasNoDataField(t *testing.T) {
 	}
 	if dataField, exists := raw["data"]; exists && string(dataField) != "null" {
 		t.Errorf("error envelope must not include a non-null data field, got %q", dataField)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Validation error envelope with field-level errors
+// ---------------------------------------------------------------------------
+
+func TestValidationError_IncludesFieldLevelErrors(t *testing.T) {
+	rec := httptest.NewRecorder()
+	api.ValidationError(rec, []api.FieldError{
+		{Field: "email", Message: "must be a valid email"},
+		{Field: "name", Message: "is required"},
+	})
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("expected status 422, got %d", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("expected Content-Type application/json, got %q", ct)
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	// success must be false
+	if string(raw["success"]) != "false" {
+		t.Errorf("expected success=false, got %s", raw["success"])
+	}
+
+	var errObj struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Fields  []struct {
+			Field   string `json:"field"`
+			Message string `json:"message"`
+		} `json:"fields"`
+	}
+	if err := json.Unmarshal(raw["error"], &errObj); err != nil {
+		t.Fatalf("could not decode error object: %v", err)
+	}
+	if errObj.Code != http.StatusUnprocessableEntity {
+		t.Errorf("expected error.code=422, got %d", errObj.Code)
+	}
+	if len(errObj.Fields) != 2 {
+		t.Fatalf("expected 2 field errors, got %d", len(errObj.Fields))
+	}
+	if errObj.Fields[0].Field != "email" {
+		t.Errorf("expected first field=email, got %q", errObj.Fields[0].Field)
+	}
+	if errObj.Fields[1].Field != "name" {
+		t.Errorf("expected second field=name, got %q", errObj.Fields[1].Field)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Middleware integration — unhandled route returns error envelope (not HTML)
+// ---------------------------------------------------------------------------
+
+func TestUnhandledRoute_ReturnsErrorEnvelope_NotHTML(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/v1/items", func(w http.ResponseWriter, _ *http.Request) {
+		api.JSON(w, http.StatusOK, map[string]string{"ok": "yes"})
+	})
+
+	// Wrap the mux with a NotFound handler that uses the error envelope
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, r)
+		if rec.Code == http.StatusNotFound {
+			api.Error(w, http.StatusNotFound, "not found")
+			return
+		}
+		for k, v := range rec.Header() {
+			w.Header()[k] = v
+		}
+		w.WriteHeader(rec.Code)
+		w.Write(rec.Body.Bytes())
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/unknown", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if strings.Contains(body, "<html") || strings.Contains(body, "<!DOCTYPE") {
+		t.Errorf("unhandled route must return JSON, not HTML: %q", body)
+	}
+
+	var env envelope
+	if err := json.Unmarshal([]byte(body), &env); err != nil {
+		t.Fatalf("expected valid JSON from unhandled route, got %q: %v", body, err)
+	}
+	if env.Success {
+		t.Errorf("expected success=false for 404")
+	}
+	if env.Error == nil || env.Error.Code != http.StatusNotFound {
+		t.Errorf("expected error.code=404, got %+v", env.Error)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Middleware integration — panic recovery returns error envelope (not HTML)
+// ---------------------------------------------------------------------------
+
+func TestPanicRecovery_ReturnsErrorEnvelope_NotHTML(t *testing.T) {
+	// Simulate a recovery middleware that catches panics and uses api.Error
+	inner := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		panic("test panic")
+	})
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				api.Error(w, http.StatusInternalServerError, "internal server error")
+			}
+		}()
+		inner.ServeHTTP(w, r)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/boom", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if strings.Contains(body, "<html") || strings.Contains(body, "<!DOCTYPE") {
+		t.Errorf("panic recovery must return JSON, not HTML: %q", body)
+	}
+
+	var env envelope
+	if err := json.Unmarshal([]byte(body), &env); err != nil {
+		t.Fatalf("expected valid JSON from panic recovery, got %q: %v", body, err)
+	}
+	if env.Success {
+		t.Errorf("expected success=false for panic recovery 500")
+	}
+	if env.Error == nil || env.Error.Code != http.StatusInternalServerError {
+		t.Errorf("expected error.code=500, got %+v", env.Error)
 	}
 }
