@@ -28,10 +28,10 @@ func TestGetAccountBalance_ReturnsCorrectBalance(t *testing.T) {
 				"balance":    "1000.0000000",
 			},
 			{
-				"asset_type": "credit_alphanum4",
-				"asset_code": "USDC",
+				"asset_type":   "credit_alphanum4",
+				"asset_code":   "USDC",
 				"asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
-				"balance":    "500.5000000",
+				"balance":      "500.5000000",
 			},
 		},
 	}
