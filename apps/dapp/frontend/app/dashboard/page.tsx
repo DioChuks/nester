@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useWallet } from "@/components/wallet-provider";
+import { Navbar } from "@/components/navbar";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";

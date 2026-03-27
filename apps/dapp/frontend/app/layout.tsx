@@ -33,25 +33,29 @@ export const metadata: Metadata = {
     },
 };
 
+import { SettingsProvider } from "@/context/settings-context";
+
 export default function RootLayout({
     children,
 }: Readonly<{
     children: React.ReactNode;
 }>) {
     return (
-        <html lang="en">
+        <html lang="en" suppressHydrationWarning>
             <body
                 suppressHydrationWarning
                 className={`${spaceGrotesk.variable} ${inter.variable} ${cormorant.variable} antialiased`}
             >
-                <WalletProvider>
-                    <NotificationsProvider>
-                        <PortfolioProvider>
-                            {children}
-                            <NotificationsToaster />
-                        </PortfolioProvider>
-                    </NotificationsProvider>
-                </WalletProvider>
+                <SettingsProvider>
+                    <WalletProvider>
+                        <NotificationsProvider>
+                            <PortfolioProvider>
+                                {children}
+                                <NotificationsToaster />
+                            </PortfolioProvider>
+                        </NotificationsProvider>
+                    </WalletProvider>
+                </SettingsProvider>
             </body>
         </html>
     );
