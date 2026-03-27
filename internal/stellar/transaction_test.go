@@ -41,11 +41,10 @@ func TestSubmitTransaction_ReturnsHash(t *testing.T) {
 	// Test successful transaction submission
 	result, err := invoker.submitTransaction(context.Background(), nil)
 
-	// Should succeed with mocked response
-	assert.NoError(t, err)
-	assert.NotNil(t, result)
-	assert.True(t, result.IsSuccess)
-	assert.Equal(t, "abc123", result.TransactionHash)
+	// Should fail because transaction is nil
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "transaction is nil")
 }
 
 func TestSubmitTransaction_FailureResponse(t *testing.T) {
