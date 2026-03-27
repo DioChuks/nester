@@ -6,7 +6,7 @@ use super::*;
 use soroban_sdk::{
     testutils::{Address as _, Events, Ledger},
     token::{StellarAssetClient, TokenClient},
-    Address, Env, Symbol,
+    Address, Env,
 };
 use nester_access_control::Role;
 
@@ -306,7 +306,7 @@ fn test_large_deposit_and_withdraw() {
 
 #[test]
 fn test_management_fee_accrual() {
-    let (env, admin, token_address, _contract_id, client) = setup();
+    let (env, _admin, token_address, _contract_id, client) = setup();
     let user = Address::generate(&env);
 
     mint_tokens(&env, &token_address, &user, 20_000);
